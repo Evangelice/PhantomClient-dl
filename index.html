@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PhantomClient — Macro Suite</title>
+<meta name="description" content="PhantomClient: cliente de macros y automatización para Roblox. Pixel trigger, macros, combos, sticky keys, overlays y optimizaciones.">
+<link rel="icon" href="phantom.ico">
+<meta property="og:title" content="PhantomClient">
+<meta property="og:description" content="Pixel trigger · Macros · Sticky keys · Overlays · Optimizaciones">
+<meta property="og:image" content="phantom.png">
+<style>
+  :root{
+    --bg:#04050a;
+    --cyan:#5eeaff; --blue:#6a7bff; --violet:#9b6bff;
+    --text:#e7ecf5;
+    --line:rgba(120,160,220,.11); --panel:rgba(140,170,220,.045);
+    --mono:ui-monospace,'Cascadia Code','SF Mono',Consolas,monospace;
+    --discord:#5865F2;
+    --mx:0; --my:0;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;font-family:'Segoe UI',system-ui,sans-serif}
+  html{scroll-behavior:smooth}
+  html,body{height:100%}
+  body{background:var(--bg);color:var(--text);overflow-x:hidden}
+  a{text-decoration:none;color:inherit}
+  ::selection{background:rgba(94,234,255,.28)}
+
+  /* ── Background stack ───────────────────────────────────────── */
+  .layer{position:fixed;inset:0;pointer-events:none}
+  .bg-base{z-index:-7;background:radial-gradient(1200px 720px at 50% -12%, #10141f 0%, #070a12 52%, var(--bg) 100%);}
+  /* aurora animada (blobs que respiran) */
+  .aurora{z-index:-6;filter:blur(70px);opacity:.55;background:
+      radial-gradient(38% 34% at 22% 26%, rgba(94,234,255,.30), transparent 70%),
+      radial-gradient(40% 36% at 78% 18%, rgba(106,123,255,.28), transparent 70%),
+      radial-gradient(44% 40% at 60% 82%, rgba(155,107,255,.24), transparent 70%);
+      animation:aurora 18s ease-in-out infinite alternate}
+  @keyframes aurora{50%{transform:translate3d(-3%,4%,0) scale(1.12) rotate(6deg)}100%{transform:translate3d(3%,-3%,0) scale(1.05) rotate(-5deg)}}
+  #field{z-index:-5}                 /* partículas + icosaedro 3D (canvas) */
+  .grid-floor{z-index:-4;bottom:0;top:auto;height:54vh;perspective:420px;overflow:hidden;
+      -webkit-mask-image:linear-gradient(to top,#000 0%,transparent 92%);mask-image:linear-gradient(to top,#000 0%,transparent 92%)}
+  .grid-floor::before{content:"";position:absolute;left:-50%;right:-50%;top:0;bottom:-40%;
+      background-image:linear-gradient(rgba(94,234,255,.22) 1px,transparent 1px),linear-gradient(90deg,rgba(94,234,255,.16) 1px,transparent 1px);
+      background-size:56px 56px;transform:rotateX(74deg) translateX(calc(var(--mx) * -26px));transform-origin:top center;animation:floor 7s linear infinite}
+  @keyframes floor{to{background-position:0 56px}}
+  .scan{z-index:-2;opacity:.5;background:repeating-linear-gradient(0deg,rgba(255,255,255,.020) 0 1px,transparent 1px 3px)}
+  .vig{z-index:-1;background:radial-gradient(120% 90% at 50% 40%,transparent 55%,rgba(0,0,0,.58) 100%)}
+
+  /* capas flotantes con parallax (anillos + shards) */
+  .depth{position:fixed;inset:0;z-index:-3;pointer-events:none;transform-style:preserve-3d;perspective:900px}
+  .ringdeco{position:absolute;border-radius:50%;border:1px solid rgba(94,234,255,.14)}
+  .ringdeco.a{width:340px;height:340px;top:16%;left:9%;border-style:dashed;border-color:rgba(106,123,255,.16);
+    transform:translate(calc(var(--mx)*-30px),calc(var(--my)*-24px)) rotate(0);animation:spin 40s linear infinite}
+  .ringdeco.b{width:230px;height:230px;bottom:14%;right:11%;
+    transform:translate(calc(var(--mx)*38px),calc(var(--my)*30px));animation:spin 30s linear infinite reverse}
+  .shard{position:absolute;width:14px;height:14px;border:1px solid rgba(94,234,255,.35);
+    transform:translate(calc(var(--mx)*var(--px,20px)),calc(var(--my)*var(--py,20px))) rotate(45deg);opacity:.5;animation:bobshard 6s ease-in-out infinite}
+  @keyframes bobshard{50%{transform:translate(calc(var(--mx)*var(--px,20px)),calc(var(--my)*var(--py,20px) - 14px)) rotate(135deg)}}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  /* cursor glow */
+  #cursor{position:fixed;left:0;top:0;width:380px;height:380px;z-index:1;pointer-events:none;transform:translate(-50%,-50%);
+    border-radius:50%;opacity:.5;transition:opacity .4s;mix-blend-mode:screen;
+    background:radial-gradient(closest-side, rgba(94,234,255,.16), rgba(155,107,255,.05) 45%, transparent 70%)}
+  #prog{position:fixed;top:0;left:0;height:2px;width:0;z-index:70;background:linear-gradient(90deg,var(--cyan),var(--violet));box-shadow:0 0 12px rgba(94,234,255,.7)}
+
+  /* nav dots por sección */
+  #dots{position:fixed;right:20px;top:50%;transform:translateY(-50%);z-index:40;display:flex;flex-direction:column;gap:14px}
+  #dots a{width:9px;height:9px;border-radius:50%;border:1px solid rgba(94,234,255,.5);background:transparent;transition:.25s;position:relative}
+  #dots a:hover{transform:scale(1.3)}
+  #dots a.on{background:var(--cyan);box-shadow:0 0 12px var(--cyan)}
+  #dots a span{position:absolute;right:18px;top:50%;transform:translateY(-50%);white-space:nowrap;font-family:var(--mono);
+    font-size:9px;letter-spacing:1px;color:rgba(94,234,255,.7);opacity:0;transition:.25s;pointer-events:none}
+  #dots a:hover span{opacity:1;right:20px}
+  @media(max-width:720px){#dots{display:none}}
+
+  /* ── HUD brackets ───────────────────────────────────────────── */
+  .hud{position:relative}
+  .hud::before,.hud::after{content:"";position:absolute;width:14px;height:14px;border:1px solid rgba(94,234,255,.55);opacity:.6}
+  .hud::before{top:-1px;left:-1px;border-right:none;border-bottom:none}
+  .hud::after{bottom:-1px;right:-1px;border-left:none;border-top:none}
+
+  /* ── Gate / boot ────────────────────────────────────────────── */
+  #gate{position:fixed;inset:0;z-index:60;display:flex;flex-direction:column;align-items:center;justify-content:center;
+        background:radial-gradient(760px 560px at 50% 42%, #0b0f19, #030407 74%);cursor:pointer;perspective:1000px;
+        transition:opacity 1s cubic-bezier(.7,0,.2,1),transform 1.2s cubic-bezier(.7,0,.2,1),filter 1s}
+  #gate.hide{opacity:0;pointer-events:none;transform:scale(1.45);filter:blur(9px)}
+  .ring{position:relative;width:190px;height:190px;display:flex;align-items:center;justify-content:center}
+  .ring i{position:absolute;inset:0;border-radius:50%;border:1px solid transparent}
+  .ring i:nth-child(1){border-top-color:rgba(94,234,255,.75);border-right-color:rgba(94,234,255,.25);animation:spin 3.2s linear infinite}
+  .ring i:nth-child(2){inset:16px;border-bottom-color:rgba(155,107,255,.7);border-left-color:rgba(155,107,255,.25);animation:spin 4.6s linear infinite reverse}
+  .ring i:nth-child(3){inset:32px;border-top-color:rgba(255,255,255,.35);animation:spin 6s linear infinite}
+  .ring img{width:104px;height:104px;filter:drop-shadow(0 0 26px rgba(94,234,255,.55));animation:float 3.6s ease-in-out infinite}
+  #gate h1{margin-top:26px;font-size:34px;letter-spacing:10px;font-weight:900;
+           background:linear-gradient(90deg,#fff,#8fb6ff 60%,var(--violet));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+  .boot{font-family:var(--mono);font-size:11.5px;letter-spacing:1px;color:rgba(94,234,255,.65);margin-top:14px;min-height:16px;text-align:center}
+  .boot b{color:#9be9ff}
+  .enter{margin-top:26px;padding:14px 40px;border-radius:8px;font-family:var(--mono);font-weight:700;letter-spacing:4px;font-size:13px;
+         color:#eaf9ff;background:linear-gradient(180deg,rgba(94,234,255,.12),rgba(94,234,255,.03));
+         border:1px solid rgba(94,234,255,.5);animation:pulse 2.2s ease-in-out infinite}
+  @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-11px)}}
+  @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(94,234,255,.28)}50%{box-shadow:0 0 34px 4px rgba(94,234,255,.18)}}
+
+  /* ── Reveal ─────────────────────────────────────────────────── */
+  #site{opacity:0;transition:opacity .9s ease .05s}
+  #site.show{opacity:1}
+  .reveal{opacity:0;transform:translateY(42px) scale(.98);filter:blur(8px);
+          transition:opacity .9s cubic-bezier(.2,.7,.2,1),transform .9s cubic-bezier(.2,.7,.2,1),filter .9s}
+  .reveal.in{opacity:1;transform:none;filter:none}
+
+  /* ── Header ─────────────────────────────────────────────────── */
+  header{position:sticky;top:0;z-index:30;display:flex;align-items:center;justify-content:space-between;
+         padding:13px 26px;backdrop-filter:blur(12px);background:rgba(5,7,12,.4);border-bottom:1px solid var(--line);transition:.3s}
+  header.scrolled{background:rgba(5,7,12,.78);border-bottom-color:rgba(94,234,255,.16)}
+  .brand{display:flex;align-items:center;gap:11px;font-weight:900;letter-spacing:3px}
+  .brand img{width:32px;height:32px;filter:drop-shadow(0 0 10px rgba(94,234,255,.5))}
+  .brand .dot{width:7px;height:7px;border-radius:50%;background:#41f0b0;box-shadow:0 0 10px #41f0b0;animation:blink 1.6s ease-in-out infinite}
+  @keyframes blink{50%{opacity:.35}}
+  .brand small{font-family:var(--mono);font-weight:600;font-size:10px;letter-spacing:2px;color:rgba(94,234,255,.6)}
+  .top-actions{display:flex;gap:10px}
+  .btn{position:relative;display:inline-flex;align-items:center;gap:8px;padding:10px 18px;border-radius:10px;font-weight:800;font-size:13px;
+       border:1px solid var(--line);background:var(--panel);transition:.18s cubic-bezier(.3,.8,.3,1);cursor:pointer;white-space:nowrap;overflow:hidden}
+  .btn:hover{transform:translateY(-2px);border-color:rgba(94,234,255,.4);box-shadow:0 10px 30px rgba(94,234,255,.14)}
+  .btn.dl{background:linear-gradient(100deg,var(--cyan),var(--blue));color:#04101c;border:none;box-shadow:0 8px 26px rgba(94,234,255,.28)}
+  .btn.dl:hover{box-shadow:0 14px 40px rgba(94,234,255,.5)}
+  .btn.dl::after{content:"";position:absolute;top:0;left:-120%;width:55%;height:100%;
+    background:linear-gradient(100deg,transparent,rgba(255,255,255,.6),transparent);transform:skewX(-20deg);animation:swipe 3.8s ease-in-out infinite}
+  @keyframes swipe{0%,55%{left:-120%}100%{left:170%}}
+  .btn.discord{background:var(--discord);border:none;color:#fff}
+  .btn svg{width:16px;height:16px}
+
+  /* ── Hero ───────────────────────────────────────────────────── */
+  .hero{text-align:center;padding:78px 20px 10px;position:relative;perspective:1100px}
+  .hero .stage{transform-style:preserve-3d;transition:transform .18s ease-out;
+     transform:rotateY(calc(var(--mx) * 8deg)) rotateX(calc(var(--my) * -6deg))}
+  .kicker{font-family:var(--mono);font-size:11px;letter-spacing:5px;color:rgba(94,234,255,.7);
+          display:inline-flex;align-items:center;gap:8px;padding:6px 14px;border:1px solid var(--line);border-radius:30px;background:var(--panel);transform:translateZ(20px)}
+  .kicker::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--cyan);box-shadow:0 0 8px var(--cyan)}
+  .hero .frame{position:relative;display:inline-flex;margin:24px 0 4px;padding:18px;border-radius:22px;transform:translateZ(80px)}
+  .hero .frame::before{content:"";position:absolute;inset:0;border-radius:22px;padding:1px;
+        background:linear-gradient(135deg,rgba(94,234,255,.6),transparent 40%,transparent 60%,rgba(155,107,255,.6));
+        -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude}
+  .hero img{width:132px;height:132px;filter:drop-shadow(0 0 32px rgba(94,234,255,.6))}
+  .hero h2{font-size:clamp(30px,8vw,62px);letter-spacing:clamp(1px,.9vw,8px);font-weight:900;margin-top:14px;line-height:1.04;
+           padding:0 6px;white-space:nowrap;transform:translateZ(50px);background-size:200% auto;
+           background-image:linear-gradient(92deg,#ffffff,#7fd6ff 30%,var(--violet) 60%,#ffffff);
+           -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;
+           text-shadow:0 0 40px rgba(106,123,255,.25);animation:shine 6s linear infinite}
+  @keyframes shine{to{background-position:200% center}}
+  .hero .tag{color:rgba(231,236,245,.62);font-size:15.5px;margin-top:14px;letter-spacing:1.4px;transform:translateZ(30px)}
+  .hero .cta{margin-top:28px;display:flex;gap:14px;justify-content:center;flex-wrap:wrap;transform:translateZ(60px)}
+  .badge{display:inline-flex;align-items:center;gap:7px;margin-top:20px;padding:6px 15px;border:1px solid var(--line);border-radius:20px;
+         font-family:var(--mono);font-size:11px;letter-spacing:1px;color:rgba(231,236,245,.6);background:var(--panel);transform:translateZ(25px)}
+  .badge b{color:#9be9ff;font-weight:700}
+  .stats{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin:34px auto 0;max-width:760px}
+  .stat{flex:1 1 150px;min-width:140px;padding:16px 14px;border:1px solid var(--line);border-radius:14px;background:var(--panel);transition:.2s}
+  .stat:hover{transform:translateY(-4px);border-color:rgba(94,234,255,.35)}
+  .stat .n{font-size:26px;font-weight:900;background:linear-gradient(90deg,var(--cyan),var(--blue));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+  .stat .l{font-family:var(--mono);font-size:10.5px;letter-spacing:1.5px;color:rgba(231,236,245,.5);margin-top:4px;text-transform:uppercase}
+  .scrollhint{margin-top:40px;font-family:var(--mono);font-size:10px;letter-spacing:4px;color:rgba(231,236,245,.4);animation:bob 2s ease-in-out infinite}
+  @keyframes bob{0%,100%{transform:translateY(0);opacity:.4}50%{transform:translateY(7px);opacity:.85}}
+
+  /* ── Sections ───────────────────────────────────────────────── */
+  .wrap{max-width:1060px;margin:0 auto;padding:20px;position:relative;z-index:2}
+  .section-title{text-align:center;font-family:var(--mono);font-size:12px;letter-spacing:5px;color:rgba(94,234,255,.55);
+                 margin:64px 0 8px;text-transform:uppercase;display:flex;align-items:center;gap:14px;justify-content:center}
+  .section-title::before,.section-title::after{content:"";height:1px;width:52px;background:linear-gradient(90deg,transparent,rgba(94,234,255,.5))}
+  .section-title::after{transform:scaleX(-1)}
+  .lead{text-align:center;color:rgba(231,236,245,.7);max-width:720px;margin:6px auto 0;line-height:1.8;font-size:15px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px;margin-top:22px}
+  .card{background:linear-gradient(180deg,rgba(140,170,220,.06),rgba(140,170,220,.02));border:1px solid var(--line);border-radius:16px;
+        padding:24px;position:relative;overflow:hidden;transform-style:preserve-3d;transition:transform .14s ease-out,border-color .2s,box-shadow .25s;will-change:transform}
+  .card::before{content:"";position:absolute;inset:0;opacity:0;transition:opacity .25s;
+        background:radial-gradient(220px 180px at var(--gx,50%) var(--gy,0%),rgba(94,234,255,.18),transparent 70%)}
+  .card::after{content:"";position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(94,234,255,.55),transparent);opacity:0;transition:opacity .25s}
+  .card:hover{border-color:rgba(94,234,255,.4);box-shadow:0 22px 50px rgba(0,0,0,.45),0 0 30px rgba(106,123,255,.16)}
+  .card:hover::before,.card:hover::after{opacity:1}
+  .card .ic{width:44px;height:44px;display:flex;align-items:center;justify-content:center;font-size:22px;border-radius:12px;transform:translateZ(35px);
+        background:linear-gradient(180deg,rgba(94,234,255,.14),rgba(106,123,255,.06));border:1px solid rgba(94,234,255,.25);margin-bottom:14px}
+  .card h3{font-size:16px;margin-bottom:8px;color:#eaf6ff;letter-spacing:.3px;transform:translateZ(24px)}
+  .card p{color:rgba(231,236,245,.64);font-size:13px;line-height:1.65;transform:translateZ(14px)}
+  .card .tagn{position:absolute;top:16px;right:16px;font-family:var(--mono);font-size:9px;letter-spacing:1px;
+        color:rgba(94,234,255,.5);border:1px solid var(--line);border-radius:6px;padding:2px 6px}
+
+  /* ── Download ───────────────────────────────────────────────── */
+  .download-cta{text-align:center;margin:78px 0 30px;padding:54px 22px;border:1px solid var(--line);border-radius:22px;position:relative;overflow:hidden;
+                background:radial-gradient(600px 300px at 50% -10%, rgba(106,123,255,.16), transparent 70%),linear-gradient(180deg,rgba(140,170,220,.05),transparent)}
+  .download-cta img{width:76px;height:76px;filter:drop-shadow(0 0 22px rgba(94,234,255,.5));margin-bottom:10px}
+  .download-cta h2{font-size:32px;letter-spacing:2px}
+  .download-cta p{color:rgba(231,236,245,.62);margin:10px 0 24px}
+  .steps{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin:0 0 26px}
+  .steps span{font-family:var(--mono);font-size:12px;color:rgba(231,236,245,.62);background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:9px 14px;transition:.2s}
+  .steps span:hover{border-color:rgba(94,234,255,.4);color:#fff;transform:translateY(-2px)}
+  .steps b{color:var(--cyan)}
+  footer{text-align:center;color:rgba(255,255,255,.32);font-size:12px;padding:40px}
+  footer a{color:rgba(94,234,255,.7)}
+  @media(max-width:560px){.brand span:not(.dot){display:none}.stat{flex-basis:44%}.hero .stage{transform:none!important}}
+</style>
+</head>
+<body>
+  <div class="layer bg-base"></div>
+  <div class="layer aurora"></div>
+  <canvas class="layer" id="field"></canvas>
+  <div class="depth">
+    <div class="ringdeco a"></div><div class="ringdeco b"></div>
+    <div class="shard" style="top:24%;left:80%;--px:-40px;--py:26px"></div>
+    <div class="shard" style="top:70%;left:16%;--px:34px;--py:-30px;animation-delay:1.4s"></div>
+    <div class="shard" style="top:40%;left:50%;--px:18px;--py:40px;animation-delay:.7s"></div>
+  </div>
+  <div class="layer grid-floor"></div>
+  <div class="layer scan"></div>
+  <div class="layer vig"></div>
+  <div id="cursor"></div>
+  <div id="prog"></div>
+
+  <div id="dots">
+    <a href="#top" class="on"><span>INICIO</span></a>
+    <a href="#about"><span>QUÉ ES</span></a>
+    <a href="#features"><span>FEATURES</span></a>
+    <a href="#download"><span>DESCARGA</span></a>
+  </div>
+
+  <!-- Gate -->
+  <div id="gate" onclick="enterSite()">
+    <div class="ring"><i></i><i></i><i></i>
+      <img src="phantom.png" alt="" onerror="this.style.display='none'"></div>
+    <h1>PHANTOMCLIENT</h1>
+    <div class="boot" id="boot">&nbsp;</div>
+    <div class="enter">[ ENTRAR ]</div>
+  </div>
+
+  <div id="site">
+    <header id="hdr">
+      <div class="brand">
+        <img src="phantom.png" alt="" onerror="this.style.display='none'">
+        <span>PHANTOMCLIENT</span>
+        <span class="dot" title="online"></span><small>SYSTEM ONLINE</small>
+      </div>
+      <div class="top-actions">
+        <a class="btn discord" href="https://discord.gg/6sbUExCzWg" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 4.4A19 19 0 0 0 15.3 3l-.2.4a17 17 0 0 1 4.4 1.3A13 13 0 0 0 4.5 4.7 17 17 0 0 1 8.9 3.4L8.7 3A19 19 0 0 0 4 4.4 19.7 19.7 0 0 0 .5 18a19 19 0 0 0 5.8 2.9l.5-.7a12 12 0 0 1-1.9-.9l.5-.4a13.6 13.6 0 0 0 11.6 0l.5.4c-.6.4-1.2.7-1.9.9l.5.7A19 19 0 0 0 23.5 18 19.6 19.6 0 0 0 20 4.4ZM8.3 14.7c-.9 0-1.7-.9-1.7-1.9s.8-1.9 1.7-1.9 1.7.9 1.7 1.9-.7 1.9-1.7 1.9Zm7.4 0c-.9 0-1.7-.9-1.7-1.9s.8-1.9 1.7-1.9 1.7.9 1.7 1.9-.7 1.9-1.7 1.9Z"/></svg>
+          Discord</a>
+        <a class="btn dl" href="#download">⬇ Download</a>
+      </div>
+    </header>
+
+    <section class="hero" id="top">
+      <div class="stage" id="stage">
+        <div class="kicker reveal">MACRO &amp; AUTOMATION SUITE · ROBLOX</div>
+        <div class="frame hud reveal">
+          <img src="phantom.png" alt="" onerror="this.style.display='none'">
+        </div>
+        <h2 class="reveal">PHANTOMCLIENT</h2>
+        <div class="tag reveal">Pixel trigger · Macros · Sticky keys · Overlays · Optimizaciones</div>
+        <div class="cta reveal">
+          <a class="btn dl" style="font-size:15px;padding:14px 34px" href="#download">⬇ Descargar</a>
+          <a class="btn discord" style="font-size:15px;padding:14px 28px" href="https://discord.gg/6sbUExCzWg" target="_blank" rel="noopener">Unirse al Discord</a>
+        </div>
+        <div class="badge reveal" id="verBadge"><b>v1.0.0</b> · Windows 10/11</div>
+      </div>
+      <div class="stats reveal">
+        <div class="stat hud"><div class="n">0ms</div><div class="l">Latencia macro</div></div>
+        <div class="stat hud"><div class="n">6+</div><div class="l">Módulos</div></div>
+        <div class="stat hud"><div class="n">1-Click</div><div class="l">Auto-update</div></div>
+        <div class="stat hud"><div class="n">.ahk</div><div class="l">Compatible</div></div>
+      </div>
+      <div class="scrollhint">↓ DESLIZA ↓</div>
+    </section>
+
+    <div class="wrap">
+      <div class="section-title reveal" id="about">¿Qué es PhantomClient?</div>
+      <p class="lead reveal">
+        Un cliente de <b>macros y automatización para Roblox</b>: dispara acciones por color de píxel,
+        arma combos y sticky keys, muestra overlays flotantes sobre el juego, controla Roblox y optimiza tu PC —
+        todo en una sola app, ligera y con un solo click.
+      </p>
+
+      <div class="section-title reveal" id="features">Características</div>
+      <div class="grid">
+        <div class="card hud reveal"><span class="tagn">01</span><div class="ic">🎯</div><h3>Pixel Trigger</h3><p>Dispara tu macro automáticamente cuando un píxel toma cierto color. Perfecto para TP, habilidades y reacciones instantáneas.</p></div>
+        <div class="card hud reveal"><span class="tagn">02</span><div class="ic">⌨️</div><h3>Macros &amp; Combos</h3><p>Crea secuencias de teclas/clics, combos con keybind y perfiles. Carga también tus scripts <b>.ahk</b>.</p></div>
+        <div class="card hud reveal"><span class="tagn">03</span><div class="ic">🖱️</div><h3>Sticky Keys</h3><p>Auto-spam de teclas y botones laterales del mouse, con modo Hold/Toggle y detección por item.</p></div>
+        <div class="card hud reveal"><span class="tagn">04</span><div class="ic">📊</div><h3>Overlays</h3><p>Indicadores flotantes sobre el juego (estado, cooldown, perfil y <b>Spotify</b>) — editables en color y tamaño.</p></div>
+        <div class="card hud reveal"><span class="tagn">05</span><div class="ic">⚡</div><h3>Optimizaciones</h3><p>Libera RAM, limpia temporales y caché de Roblox, flush DNS, modo alto rendimiento y prioridad de proceso.</p></div>
+        <div class="card hud reveal"><span class="tagn">06</span><div class="ic">🚀</div><h3>Launcher &amp; Extras</h3><p>Abre/reinicia Roblox, Quick Rejoin, cursor y fuentes personalizadas, y actualizaciones automáticas.</p></div>
+      </div>
+
+      <div id="download" class="download-cta hud reveal">
+        <img src="phantom.png" alt="" onerror="this.style.display='none'">
+        <h2>Descarga PhantomClient</h2>
+        <p>Gratis · Windows 10/11</p>
+        <div class="steps"><span><b>1</b> · Descarga el .zip</span><span><b>2</b> · Descomprime</span><span><b>3</b> · Abre PhantomClient.exe</span><span><b>4</b> · Activa con tu licencia</span></div>
+        <a class="btn dl" style="font-size:16px;padding:16px 42px" href="https://github.com/Evangelice/PhantomClient-dl/releases/latest/download/PhantomClient.zip">⬇ Descargar ahora</a>
+        <div style="margin-top:16px"><a class="btn discord" href="https://discord.gg/6sbUExCzWg" target="_blank" rel="noopener">¿Dudas o licencia? Únete al Discord</a></div>
+      </div>
+    </div>
+
+    <footer>PhantomClient © 2026 · Hecho por Evangelice · <a href="https://discord.gg/6sbUExCzWg" target="_blank" rel="noopener">Discord</a></footer>
+  </div>
+
+<script>
+  /* ── Gate + boot ──────────────────────────────────────────── */
+  var bootLines=['> init phantom.core','> loading modules ......... <b>OK</b>','> pixel engine ........... <b>READY</b>','> render 3d field ........ <b>OK</b>','> sistema en línea'];
+  var bi=0,bootTimer;
+  function runBoot(){var el=document.getElementById('boot');if(!el)return;
+    if(bi<bootLines.length){el.innerHTML=bootLines[bi++];bootTimer=setTimeout(runBoot,540);}}
+  runBoot();
+  function enterSite(){
+    clearTimeout(bootTimer);
+    document.getElementById('gate').classList.add('hide');
+    document.getElementById('site').classList.add('show');
+    requestAnimationFrame(function(){document.querySelectorAll('.reveal').forEach(function(e,i){setTimeout(function(){e.classList.add('in')},60*i)})});
+  }
+
+  /* ── Version badge ────────────────────────────────────────── */
+  fetch('version.json').then(function(r){return r.json()}).then(function(d){
+    if(d&&d.version){document.getElementById('verBadge').innerHTML='<b>v'+d.version+'</b> · Windows 10/11';}
+  }).catch(function(){});
+
+  /* ── Reveal + progress + header + nav dots ────────────────── */
+  var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target)}})},{threshold:.14});
+  document.querySelectorAll('.reveal').forEach(function(e){io.observe(e)});
+  var scrollN=0,hdr=document.getElementById('hdr'),prog=document.getElementById('prog');
+  var dots=[].slice.call(document.querySelectorAll('#dots a'));
+  var secs=['top','about','features','download'].map(function(id){return document.getElementById(id)});
+  function onScroll(){
+    var h=document.body.scrollHeight-innerHeight;scrollN=h>0?scrollY/h:0;
+    prog.style.width=(scrollN*100)+'%';hdr.classList.toggle('scrolled',scrollY>28);
+    var cur=0;for(var i=0;i<secs.length;i++){if(secs[i]&&secs[i].getBoundingClientRect().top<innerHeight*.4)cur=i;}
+    dots.forEach(function(d,i){d.classList.toggle('on',i===cur)});
+  }
+  addEventListener('scroll',onScroll,{passive:true});onScroll();
+
+  /* ── Mouse global (suavizado) ─────────────────────────────── */
+  var tmx=0,tmy=0,mx=0,my=0,root=document.documentElement,cur=document.getElementById('cursor');
+  addEventListener('mousemove',function(e){
+    tmx=(e.clientX/innerWidth-.5)*2;tmy=(e.clientY/innerHeight-.5)*2;
+    cur.style.left=e.clientX+'px';cur.style.top=e.clientY+'px';
+  });
+
+  /* ── Tilt 3D + glare en cards ─────────────────────────────── */
+  document.querySelectorAll('.card').forEach(function(c){
+    c.addEventListener('mousemove',function(ev){
+      var r=c.getBoundingClientRect(),px=(ev.clientX-r.left)/r.width,py=(ev.clientY-r.top)/r.height;
+      c.style.transform='perspective(720px) rotateY('+((px-.5)*10)+'deg) rotateX('+((.5-py)*10)+'deg) translateZ(6px)';
+      c.style.setProperty('--gx',(px*100)+'%');c.style.setProperty('--gy',(py*100)+'%');
+    });
+    c.addEventListener('mouseleave',function(){c.style.transform=''});
+  });
+
+  /* ── Canvas 3D: nube de partículas + icosaedro wireframe ──── */
+  (function(){
+    var cv=document.getElementById('field'),ctx=cv.getContext('2d'),W,H,DPR=Math.min(devicePixelRatio||1,2);
+    function resize(){W=cv.width=innerWidth*DPR;H=cv.height=innerHeight*DPR;cv.style.width=innerWidth+'px';cv.style.height=innerHeight+'px';}
+    addEventListener('resize',resize);resize();
+
+    // nube esférica de puntos (ambiente)
+    var N=innerWidth<600?90:160,R=340,pts=[];
+    for(var i=0;i<N;i++){var u=Math.random(),v=Math.random(),th=u*6.283,ph=Math.acos(2*v-1),r=R*Math.cbrt(Math.random());
+      pts.push({x:r*Math.sin(ph)*Math.cos(th),y:r*Math.sin(ph)*Math.sin(th),z:r*Math.cos(ph),s:.5+Math.random()*1.3});}
+
+    // icosaedro wireframe (pieza central)
+    var g=(1+Math.sqrt(5))/2, S=118;
+    var IV=[[-1,g,0],[1,g,0],[-1,-g,0],[1,-g,0],[0,-1,g],[0,1,g],[0,-1,-g],[0,1,-g],[g,0,-1],[g,0,1],[-g,0,-1],[-g,0,1]]
+      .map(function(p){return {x:p[0]*S,y:p[1]*S,z:p[2]*S};});
+    var IE=[];for(var a=0;a<12;a++)for(var b=a+1;b<12;b++){var dx=IV[a].x-IV[b].x,dy=IV[a].y-IV[b].y,dz=IV[a].z-IV[b].z;
+      if(Math.abs(Math.sqrt(dx*dx+dy*dy+dz*dz)-2*S)<S*0.2)IE.push([a,b]);}
+
+    function rot(p,cy,sy,cx,sx){var x=p.x*cy-p.z*sy,z=p.x*sy+p.z*cy,y=p.y*cx-z*sx;z=p.y*sx+z*cx;return {x:x,y:y,z:z};}
+    var t=0;
+    function frame(){
+      if(cv.width!==((innerWidth*DPR)|0)||cv.height!==((innerHeight*DPR)|0))resize();
+      t+=0.0016;mx+=(tmx-mx)*.05;my+=(tmy-my)*.05;
+      root.style.setProperty('--mx',mx.toFixed(3));root.style.setProperty('--my',my.toFixed(3));
+      var ay=t+mx*0.6+scrollN*3.2, ax=my*0.5+scrollN*0.8;
+      var cy=Math.cos(ay),sy=Math.sin(ay),cx=Math.cos(ax),sx=Math.sin(ax);
+      var cxp=W/2,cyp=H*0.46,F=520*DPR;
+      ctx.clearRect(0,0,W,H);
+
+      // --- nube de puntos + constelación ---
+      var proj=[];
+      for(var i=0;i<pts.length;i++){var q=rot(pts[i],cy,sy,cx,sx);var d=F/(F+q.z*DPR+R*DPR);
+        proj.push({x:cxp+q.x*DPR*d,y:cyp+q.y*DPR*d,d:d,s:pts[i].s});}
+      var maxD=104*DPR;
+      for(var m=0;m<proj.length;m++){var A=proj[m];
+        for(var n=m+1;n<proj.length;n++){var B=proj[n],dx=A.x-B.x,dy=A.y-B.y,dd=dx*dx+dy*dy;
+          if(dd<maxD*maxD){var al=(1-Math.sqrt(dd)/maxD)*0.14*Math.min(A.d,B.d);
+            if(al>0.008){ctx.strokeStyle='rgba(120,205,255,'+al+')';ctx.lineWidth=DPR*.5;
+              ctx.beginPath();ctx.moveTo(A.x,A.y);ctx.lineTo(B.x,B.y);ctx.stroke();}}}}
+      for(var k=0;k<proj.length;k++){var P=proj[k];ctx.beginPath();ctx.fillStyle='rgba(200,228,255,'+Math.min(1,P.d*1.05)+')';
+        ctx.shadowColor='rgba(94,234,255,.9)';ctx.shadowBlur=7*P.d;ctx.arc(P.x,P.y,P.s*P.d*DPR*1.2,0,6.283);ctx.fill();}
+      ctx.shadowBlur=0;
+
+      // --- icosaedro wireframe (se desvanece al hacer scroll) ---
+      var iso=Math.max(0,1-scrollN*2.2);
+      if(iso>0.02){
+        var iy=t*1.4+mx*0.9, ix=t*0.5+my*0.7;
+        var icy=Math.cos(iy),isy=Math.sin(iy),icx=Math.cos(ix),isx=Math.sin(ix);
+        var IP=IV.map(function(p){var q=rot(p,icy,isy,icx,isx);var d=F/(F+q.z*DPR+S*DPR);
+          return {x:cxp+q.x*DPR*d,y:cyp+q.y*DPR*d,d:d};});
+        for(var e=0;e<IE.length;e++){var A2=IP[IE[e][0]],B2=IP[IE[e][1]];
+          var dep=(A2.d+B2.d)/2, al2=iso*dep*0.55;
+          var grd=ctx.createLinearGradient(A2.x,A2.y,B2.x,B2.y);
+          grd.addColorStop(0,'rgba(94,234,255,'+al2+')');grd.addColorStop(1,'rgba(155,107,255,'+al2+')');
+          ctx.strokeStyle=grd;ctx.lineWidth=DPR*1.1;ctx.shadowColor='rgba(94,234,255,.6)';ctx.shadowBlur=6;
+          ctx.beginPath();ctx.moveTo(A2.x,A2.y);ctx.lineTo(B2.x,B2.y);ctx.stroke();}
+        for(var vtx=0;vtx<IP.length;vtx++){ctx.beginPath();ctx.fillStyle='rgba(200,235,255,'+(iso*IP[vtx].d)+')';
+          ctx.arc(IP[vtx].x,IP[vtx].y,DPR*2.1*IP[vtx].d,0,6.283);ctx.fill();}
+        ctx.shadowBlur=0;
+      }
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  })();
+</script>
+</body>
+</html>
